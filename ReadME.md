@@ -15,7 +15,7 @@ You must address networking issues, including
 - We create a new cluster in GKE, and deploy **Prometheus** to pull the metrics from all the clusters and store it in a time series DB.
 - We also deploy **Grafana** in the same cluster to convert the stored metrics into visual graphs and we observe.
 - InfluxDB or Big Query for persisting metrics.
-## VPN <!-- {"fold":true} -->
+## VPN 
 #### IP forwarding & NAT
 ```bash
 sudo nano /etc/sysctl.conf
@@ -28,7 +28,7 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 ```
 ## Service Mesh & Prometheus
 - K8s RBAC role binding
-- firewall rule <!-- {"fold":true} -->
+- firewall rule 
   ```bash
   $ gcloud compute firewall-rules create istio-multicluster-pods \
   --allow=tcp,udp,icmp,esp,ah,sctp \
@@ -40,9 +40,9 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 - install Istio
 - label to namespace `—istio-injection=enabled`
 - Istio automatically detects the services and endpoints in that cluster through pilot.
-- Identity, mTLS(Auth), Encryption(Security)<!-- {"fold":true} -->
+- Identity, mTLS(Auth), Encryption(Security)
   - CA X.509 certificates
-- ServiceEntry & DestinationRule for multi cloud setup<!-- {"fold":true} -->
+- ServiceEntry & DestinationRule for multi cloud setup
   ```yml
   # IngressGateway
   apiVersion: networking.istio.io/v1alpha3
@@ -114,7 +114,7 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
           attempts: 3
           perTryTimeout: 2s
   ```  
-- Metrics<!-- {"fold":true} -->
+- Metrics
   - [x] CPU Utilisation
   - [x] Memory Utilisation
   - [x] Network Utilisation
@@ -135,7 +135,7 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
   - counters
   - summaries
   - histogram
-- Setup custom metrics<!-- {"fold":true} -->
+- Setup custom metrics
   - Define `Telemetry`
     ```yml
     apiVersion: telemetry.istio.io/v1alpha1
@@ -166,7 +166,7 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
               destination_port:
                 value: "string(destination.port)"
     ```
-- Prometheus node exporter with Volume and Volume Mounts<!-- {"fold":true} -->
+- Prometheus node exporter with Volume and Volume Mounts
   ```yaml
   # node exporter to deploy on each sidecar
   apiVersion: apps/v1
@@ -204,6 +204,55 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
           hostPath:
             path: /
   ```
+- Prometheus Server
+  ```yml
+  global:
+    scrape_interval: 15s
+  scrape_configs:
+    - job_name: 'prometheus'
+      scrape_interval: 15s
+      static_configs:
+        - targets: ['localhost:9090']
+  remote_write:
+    - url: "http://localhost:9091/write"
+  ```
+## Big Query
+- BQ table
+  ```bash
+  BQ_DATASET_NAME=prometheus
+  BQ_TABLE_NAME=metrics
+  GCP_PROJECT_ID=<your-gcp-project-id>
+  
+  bq --location=EURPOPE mk --dataset $GCP_PROJECT_ID:$BQ_DATASET_NAME
+  bq mk --table \
+    --schema ./bq-schema.json \
+    --time_partitioning_field timestamp \
+    --time_partitioning_type DAY $GCP_PROJECT_ID:$BQ_DATASET_NAME.$BQ_TABLE_NAME
+  ```
+- open source adapter - [KohlsTechnology/prometheus_bigquery_remote_storage_adapter: Prometheus remote storage adapter for Google's BigQuery](https://github.com/KohlsTechnology/prometheus_bigquery_remote_storage_adapter)
+## Grafana
+```promql
+# CPU
+100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+# Memory
+100 * (1 - ((node_memory_MemAvailable_bytes{} or node_memory_MemFree_bytes{}) / node_memory_MemTotal_bytes{}))
+
+# Network Incoming
+rate(node_network_receive_bytes_total[5m])
+
+# Network Outgoing
+rate(node_network_transmit_bytes_total[5m])
+
+# Disk
+rate(node_filesystem_avail_bytes[5m])
+
+# Total requests
+sum(rate(istio_requests_total[5m]))
+
+# Job duration
+rate(istio_request_duration_milliseconds[5m])
+```
 ## Presentation Notes:
 - Intro —  2m
 - VPN — 3m
