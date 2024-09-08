@@ -16,16 +16,50 @@ You must address networking issues, including
 - We also deploy **Grafana** in the same cluster to convert the stored metrics into visual graphs and we observe.
 - InfluxDB or Big Query for persisting metrics.
 ## VPN 
-#### IP forwarding & NAT
-```bash
-sudo nano /etc/sysctl.conf
-
-# IP FORWARD
-net.ipv4.ip_forward=1
-   
-# NAT
-iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-```
+- Deploy on all clusters as a pod
+- Use different OS for GKE and not the default COS.
+- add custom routes and gateways for traffic management.
+- modify firewall rules — enable port, add traffic rules. (research more on this)
+- Config
+  ```bash
+  [Interface]
+  Address = 10.13.13.1
+  ListenPort = 51820
+  PrivateKey = <private-key>
+  
+  PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth+ -j MASQUERADE
+  PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth+ -j MASQUERADE
+  
+  [Peer]
+  PublicKey = <public-key>
+  AllowedIPs = 10.13.13.2/32
+  ```
+- store as ConfigMaps
+  ```yml
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: wireguard-configmap
+    namespace: wireguard
+  data:
+    PUID: "1000"
+    PGID: "1000"
+    TZ: "America/New_York"
+    SERVERPORT: "51820"
+    PEERS: "1"
+    PEERDNS: "10.4.0.10"
+    ALLOWEDIPS: "0.0.0.0/0, ::/0"
+  ```
+- IP forwarding & NAT
+  ```bash
+  sudo nano /etc/sysctl.conf
+  
+  # IP FORWARD
+  net.ipv4.ip_forward=1
+     
+  # NAT
+  iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+  ```
 ## Service Mesh & Prometheus
 - K8s RBAC role binding
 - firewall rule 
@@ -135,37 +169,36 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
   - counters
   - summaries
   - histogram
-- Setup custom metrics
-  - Define `Telemetry`
-    ```yml
-    apiVersion: telemetry.istio.io/v1alpha1
-    kind: Telemetry
-    metadata:
-      name: namespace-metrics
-    spec:
-      metrics:
-        - providers:
-          - name: prometheus
-        - name: my_custom_metric
-          type: COUNTER
-          description: "Description of your custom metric"
-          dimensions:
-            source_app: source.app
-            destination_app: destination.app
-            request_path: request.path
-          expression: "1"
-        - overrides:
-          - match:
-              metric: REQUEST_COUNT
-              mode: CLIENT_AND_SERVER
-            tagOverrides:
-              request_operation:
-                value: istio_operationId
-              request_host:
-                value: "request.host"
-              destination_port:
-                value: "string(destination.port)"
-    ```
+- Setup custom metrics, Define `Telemetry`
+  ```yml
+  apiVersion: telemetry.istio.io/v1alpha1
+  kind: Telemetry
+  metadata:
+    name: namespace-metrics
+  spec:
+    metrics:
+      - providers:
+        - name: prometheus
+      - name: my_custom_metric
+        type: COUNTER
+        description: "Description of your custom metric"
+        dimensions:
+          source_app: source.app
+          destination_app: destination.app
+          request_path: request.path
+        expression: "1"
+      - overrides:
+        - match:
+            metric: REQUEST_COUNT
+            mode: CLIENT_AND_SERVER
+          tagOverrides:
+            request_operation:
+              value: istio_operationId
+            request_host:
+              value: "request.host"
+            destination_port:
+              value: "string(destination.port)"
+  ```
 - Prometheus node exporter with Volume and Volume Mounts
   ```yaml
   # node exporter to deploy on each sidecar
@@ -230,30 +263,30 @@ iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
     --time_partitioning_type DAY $GCP_PROJECT_ID:$BQ_DATASET_NAME.$BQ_TABLE_NAME
   ```
 - open source adapter - [KohlsTechnology/prometheus_bigquery_remote_storage_adapter: Prometheus remote storage adapter for Google's BigQuery](https://github.com/KohlsTechnology/prometheus_bigquery_remote_storage_adapter)
-## Grafana
-```promql
-# CPU
-100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
-
-# Memory
-100 * (1 - ((node_memory_MemAvailable_bytes{} or node_memory_MemFree_bytes{}) / node_memory_MemTotal_bytes{}))
-
-# Network Incoming
-rate(node_network_receive_bytes_total[5m])
-
-# Network Outgoing
-rate(node_network_transmit_bytes_total[5m])
-
-# Disk
-rate(node_filesystem_avail_bytes[5m])
-
-# Total requests
-sum(rate(istio_requests_total[5m]))
-
-# Job duration
-rate(istio_request_duration_milliseconds[5m])
-```
-## Presentation Notes:
+  ## Grafana
+  ```promql
+  # CPU
+  100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+  
+  # Memory
+  100 * (1 - ((node_memory_MemAvailable_bytes{} or node_memory_MemFree_bytes{}) / node_memory_MemTotal_bytes{}))
+  
+  # Network Incoming
+  rate(node_network_receive_bytes_total[5m])
+  
+  # Network Outgoing
+  rate(node_network_transmit_bytes_total[5m])
+  
+  # Disk
+  rate(node_filesystem_avail_bytes[5m])
+  
+  # Total requests
+  sum(rate(istio_requests_total[5m]))
+  
+  # Job duration
+  rate(istio_request_duration_milliseconds[5m])
+  ```
+  ## Presentation Notes:
 - Intro —  2m
 - VPN — 3m
 - Service Mesh — 8m
