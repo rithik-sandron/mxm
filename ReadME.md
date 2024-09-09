@@ -17,7 +17,7 @@ You must address networking issues, including
 - InfluxDB or Big Query for persisting metrics.
 ## VPN 
 - Deploy on all clusters as a pod
-- Use different OS for GKE and not the default COS.
+- setup video - [Quick Start](https://www.wireguard.com/quickstart/)
 - add custom routes and gateways for traffic management.
 - modify firewall rules — enable port, add traffic rules. (research more on this)
 - Config
@@ -285,6 +285,31 @@ You must address networking issues, including
   
   # Job duration
   rate(istio_request_duration_milliseconds[5m])
+  ```
+- Custom metrics
+  ```yml
+  # app pod annotations
+  annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "<metrics-port>"
+  prometheus.io/path: "/metrics"
+  
+  # istio config to merge metrics
+  meshConfig:
+  enablePrometheusMerge: true
+  
+  PodMonitor & ServiceMonitor config
+  apiVersion: monitoring.coreos.com/v1
+  kind: PodMonitor
+  metadata:
+    name: custom-metrics
+  spec:
+    selector:
+      matchLabels:
+        app: your-app-label
+    podMetricsEndpoints:
+  - port: metrics-port-name
+    path: /metrics
   ```
   ## Presentation Notes:
 - Intro —  2m
